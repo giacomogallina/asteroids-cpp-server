@@ -1,14 +1,16 @@
 #include <iostream>
-#include <time.h>
+#include <ctime>
 #include <string>
 #include <thread>
 #include <vector>
 #include <unistd.h>
 #include <fstream>
 #include <math.h>
+#include <cstdlib>
 
 using namespace std;
 
+time_t timer;
 
 class Event
 {
@@ -23,10 +25,52 @@ public:
 };
 
 
+class Ship
+{
+public:
+    bool shoot, left, right, up;
+    float X, Y, D, Vx, Vy;
+    int r, g, b;
+};
+
+
 class Projectile
 {
+public:
     bool unused;
-    float X, Y, D, Vx, Vy;
+    float X, Y, D, Vx, Vy, birth;
+    int r, g, b;
+
+    void shoot(Ship *ship, float g)
+    {
+        X = ship->X + 10 * sin(ship->D);
+        Y = ship->Y + 10 * cos(ship->D);
+        Vx = g * sin(ship->D) + ship->Vx;
+        Vy = -g * cos(ship->D) + ship->Vy;
+        birth = time(&timer);
+        r = ship->r;
+        g = ship->g;
+        b = ship->b;
+        unused = 0;
+    };
+
+    void remove()
+    {
+        if (time(&timer) - birth > 2)
+        {
+            X = -100;
+            Y = -100;
+            Vx = 0;
+            Vy = 0;
+            unused = 1;
+        };
+    };
+
+    void move(int width, int height)
+    {
+        X = fmod(X + Vx, width);
+        Y = fmod(Y + Vy, height);
+    };
 };
 
 
@@ -35,20 +79,19 @@ class Asteroid
 public:
     bool dead;
     float X, Y, D, Vx, Vy;
-    int list_position;
+    int list_position, type;
+    int radius[3] = {50, 25, 15};
 
-    void generate(int a)
+    void generate(int a, int width, int height, float speed, int t)
     {
         list_position = a;
+        X = fmod((rand() % width)/2 - width/4, width);
+        Y = fmod((rand() % height)/2 - height/4, height);
+        Vx = ((rand() % 2000) / 1000 - 1) * speed;
+        Vy = (rand() % 2 * 2 - 1) * pow(pow(speed, 2) - pow(Vx, 2), 0.5);
+        dead = 0;
+        type = t;
     };
-};
-
-
-class Ship
-{
-public:
-    bool shoot, left, right, up;
-    float X, Y, D, Vx, Vy;
 };
 
 
@@ -96,7 +139,6 @@ public:
     float rotation_speed;
     float projectile_speed;
     float asteroids_speed;
-    time_t timer;
     float next_tick_time;
 
     void import_settings()
@@ -204,7 +246,7 @@ public:
         };
         for (int i = 0; i < 14 * level; i += 7)
         {
-            As[i].generate(i);
+            As[i].generate(i, window_width, window_height, asteroids_speed, 0);
         };
         level_start_tick = -1;
     };
@@ -229,13 +271,33 @@ public:
         };
     };
 
-    
+    void check_for_collisions()
+    {
+        Asteroid *a;
+        Projectile *p;
+        Ship *s;
+        for (int i = 0; i < As.size(); i++)
+        {
+            a = &As[i];
+            if (!a->dead)
+            {
+                for (int j = 0; j < Ps.size(); j++)
+                {
+                    p = &Ps[i];
+                    if (pow(a->X - p->X, 2) + pow(a->Y - p->Y, 2) < pow(a->radius[a->type], 2))
+                    {
+
+                    };
+                };
+            };
+        };
+    };
 };
 
 
 int main()
 {
-    time_t timer;
+    srand(time(&timer));
     double secs = time(&timer);
     cout << secs << endl;
     return 0;
