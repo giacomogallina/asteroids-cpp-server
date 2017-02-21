@@ -28,9 +28,53 @@ public:
 class Ship
 {
 public:
-    bool shoot, left, right, up;
-    float X, Y, D, Vx, Vy;
+    bool shoot, left, right, up, pulsing;
+    float X, Y, D, Vx, Vy, pulse_time;
     int r, g, b;
+    string name;
+
+    Ship(string n, int R, int G, int B, int width, int height)
+    {
+        name = n;
+        r = R;
+        g = G;
+        b = B;
+        X = width / 2;
+        Y = height / 2;
+        Vx = 0;
+        Vy = 0;
+        D = M_PI / 2;
+    };
+
+    void move(float r_s, float a, float f, int width, int height)
+    {
+        if (left)
+        {
+            D = fmod(D + r_s, 2 * M_PI);
+        };
+        if (right)
+        {
+            D = fmod(D - r_s, 2 * M_PI);
+        };
+        if (up)
+        {
+            Vx += a / 2 * cos(D);
+            Vy -= a / 2 * sin(D);
+        };
+        Vx *= f;
+        Vy *= f;
+        X = fmod(X + Vx, width);
+        Y = fmod(Y + Vy, height);
+        if (up)
+        {
+            Vx += a / 2 * cos(D);
+            Vy -= a / 2 * sin(D);
+        };
+        if (time(&timer) - pulse_time > 3)
+        {
+            pulsing = 0;
+        };
+    };
 };
 
 
@@ -41,12 +85,13 @@ public:
     float X, Y, D, Vx, Vy, birth;
     int r, g, b;
 
-    void shoot(Ship *ship, float g)
+    void shoot(Ship *ship, float p_s)
     {
-        X = ship->X + 10 * sin(ship->D);
-        Y = ship->Y + 10 * cos(ship->D);
-        Vx = g * sin(ship->D) + ship->Vx;
-        Vy = -g * cos(ship->D) + ship->Vy;
+        D = ship->D;
+        X = ship->X + 10 * sin(D);
+        Y = ship->Y + 10 * cos(D);
+        Vx = p_s * sin(D) + ship->Vx;
+        Vy = -p_s * cos(D) + ship->Vy;
         birth = time(&timer);
         r = ship->r;
         g = ship->g;
@@ -91,6 +136,15 @@ public:
         Vy = (rand() % 2 * 2 - 1) * pow(pow(speed, 2) - pow(Vx, 2), 0.5);
         dead = 0;
         type = t;
+    };
+
+    void move(int width, int height)
+    {
+        if (!dead)
+        {
+            X = fmod(X + Vx, width);
+            Y = fmod(Y + Vy, height);
+        };
     };
 };
 
@@ -271,11 +325,35 @@ public:
         };
     };
 
+    void check_for_shoots()
+    {
+        Ship *s;
+        Projectile *p;
+        for (int i = 0; i < players.size(); i++)
+        {
+            s = players[i].ship;
+            if (s->shoot)
+            {
+                for (int j = 0; j < Ps.size(); j++)
+                {
+                    p = &Ps[j];
+                    if (p->unused)
+                    {
+                        p->shoot(s, projectile_speed);
+                        points -= 1;
+                    };
+                };
+            };
+        };
+    };
+
     void check_for_collisions()
     {
-        Asteroid *a;
+        Asteroid *a, *son1, *son2;
         Projectile *p;
         Ship *s;
+        float alpha, sin_alpha, cos_alpha;
+        // asteroids-projectile collisions
         for (int i = 0; i < As.size(); i++)
         {
             a = &As[i];
@@ -284,13 +362,128 @@ public:
                 for (int j = 0; j < Ps.size(); j++)
                 {
                     p = &Ps[i];
-                    if (pow(a->X - p->X, 2) + pow(a->Y - p->Y, 2) < pow(a->radius[a->type], 2))
+                    if (!p->unused)
                     {
-
+                        if (pow(a->X - p->X, 2) + pow(a->Y - p->Y, 2) < pow(a->radius[a->type], 2))
+                        {
+                            a->dead = 1;
+                            p->unused = 0;
+                            if (a->type < 3)
+                            {
+                                son1 = &As[a->list_position + 1];
+                                son2 = &As[a->list_position + 4 - 2 * a->type];
+                                son1->generate(a->list_position + 1,
+                                    window_width, window_height,
+                                    asteroids_speed, a->type + 1);
+                                son2->generate(a->list_position + 4
+                                    - 2 * a->type, window_width, window_height,
+                                    asteroids_speed, a->type + 1);
+                                points += 20 + 30 * a->type;
+                                son1->X = a->X;
+                                son1->Y = a->Y;
+                                son2->X = a->X;
+                                son2->Y = a->Y;
+                                son1->Vx = a->Vx;
+                                son1->Vy = a->Vy;
+                                son2->Vx = a->Vx;
+                                son2->Vy = a->Vy;
+                                alpha = (rand() % 1000) / 1000;
+                                sin_alpha = sin(alpha);
+                                cos_alpha = cos(alpha);
+                                son1->Vx = a->Vx * cos_alpha - a->Vy * sin_alpha;
+                                son1->Vy = a->Vx * sin_alpha + a->Vy * cos_alpha;
+                                sin_alpha = sin(-alpha);
+                                cos_alpha = cos(-alpha);
+                                son2->Vx = a->Vx * cos_alpha - a->Vy * sin_alpha;
+                                son2->Vy = a->Vx * sin_alpha + a->Vy * cos_alpha;
+                            }
+                            else
+                            {
+                                points += 100;
+                            };
+                            if (points > highscore)
+                            {
+                                highscore = points;
+                            };
+                        };
                     };
                 };
             };
         };
+        // ship-asteroid/projectile collisions
+        for (int i = 0; i < players.size(); i++)
+        {
+            s = players[i].ship;
+            if (!s->pulsing)
+            {
+                for (int j = 0; j < As.size(); j++)
+                {
+                    a = &As[j];
+                    if (!a->dead)
+                    {
+                        if (pow(s->X - a->X, 2) + pow(s->Y - a->Y, 2) <= pow(a->radius[a->type] + 5, 2))
+                        {
+                            s->pulsing = 1;
+                            s->pulse_time = time(&timer);
+                            s->X = window_width/2;
+                            s->Y = window_height/2;
+                            s->D = M_PI/2;
+                            s->Vx = 0;
+                            s->Vy = 0;
+                            lifes -= 1;
+                            break;
+                        };
+                    };
+                };
+                for (int j = 0; j < Ps.size(); j++)
+                {
+                    p = &Ps[j];
+                    if (!p->unused)
+                    {
+                        if (pow(s->X - p->X, 2) + pow(s->Y - p->Y, 2) <= 8)
+                        {
+                            s->pulsing = 1;
+                            s->pulse_time = time(&timer);
+                            s->X = window_width/2;
+                            s->Y = window_height/2;
+                            s->D = M_PI/2;
+                            s->Vx = 0;
+                            s->Vy = 0;
+                            lifes -= 1;
+                            p->unused = 0;
+                            break;
+                        };
+                    };
+                };
+            };
+        };
+    };
+
+    void move()
+    {
+        check_for_level();
+        check_for_shoots();
+        for (int i = 0; i < players.size(); i++)
+        {
+            players[i].ship->move(rotation_speed, acceleration, friction,
+                window_width, window_height);
+        };
+        for (int i = 0; i < Ps.size(); i++)
+        {
+            if (!Ps[i].unused)
+            {
+                Ps[i].remove();
+                Ps[i].move(window_width, window_height);
+            };
+        };
+        for (int i = 0; i < As.size(); i++)
+        {
+            if (!As[i].dead)
+            {
+                As[i].move(window_width, window_height);
+            };
+        };
+        check_for_collisions();
     };
 };
 
