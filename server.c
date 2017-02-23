@@ -485,6 +485,71 @@ public:
         };
         check_for_collisions();
     };
+
+    void make_status()
+    {
+        string new_status, new_partial_status;
+        Projectile *p;
+        Ship *s;
+        Asteroid *a;
+        int types[7] = {0, 1, 2, 2, 1, 2, 2};
+        int count = 0;
+        new_status = "0";
+        new_status += "," + to_string(level);
+        new_status += "," + to_string(Ps.size());
+        for (int i = 0; i < Ps.size(); i++)
+        {
+            p = &Ps[i];
+            if (!p->unused)
+            {
+                new_status += "," + to_string(p->X);
+                new_status += "," + to_string(p->Y);
+                new_status += "," + to_string(p->D);
+                new_status += "," + to_string(p->r);
+                new_status += "," + to_string(p->g);
+                new_status += "," + to_string(p->b);
+            };
+        };
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; i < As.size(); i++)
+            {
+                if (types[j%7] == i)
+                {
+                    a = &As[j];
+                    if (!a->dead)
+                    {
+                        new_partial_status += "," + to_string(a->X);
+                        new_partial_status += "," + to_string(a->X);
+                        new_partial_status += ",0";
+                        count++;
+                    };
+                };
+            };
+            new_status += "," + to_string(count) + new_partial_status;
+            count = 0;
+            new_partial_status = "";
+        };
+        for (int i = 0; i < players.size(); i++)
+        {
+            s = players[i].ship;
+            if ((!s->pulsing) || (fmod(time(&timer) - s->pulse_time, 0.5) <= 0.3))
+            {
+                new_partial_status += "," + s->name;
+                new_partial_status += "," + to_string(s->X);
+                new_partial_status += "," + to_string(s->Y);
+                new_partial_status += "," + to_string(s->D);
+                new_partial_status += "," + to_string(s->up);
+                new_partial_status += "," + to_string(s->r);
+                new_partial_status += "," + to_string(s->g);
+                new_partial_status += "," + to_string(s->b);
+                count++;
+            };
+        };
+        new_status += "," + to_string(count) + new_partial_status;
+
+        status = new_status;
+    };
 };
 
 
@@ -492,6 +557,7 @@ int main()
 {
     srand(time(&timer));
     double secs = time(&timer);
+    Engine e;
     cout << secs << endl;
     return 0;
 };
