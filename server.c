@@ -1,16 +1,22 @@
 #include <iostream>
 #include <ctime>
-#include <string>
+#include <string.h>
 #include <thread>
 #include <vector>
 #include <unistd.h>
 #include <fstream>
 #include <math.h>
 #include <cstdlib>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 using namespace std;
 
 time_t timer;
+clockid_t clk_id;
+struct timespec tp;
 
 class Event
 {
@@ -162,23 +168,13 @@ public:
 };
 
 
-class Connection_accepter
-{};
-
-
-class Listener
-{};
-
-
 class Engine
 {
 public:
-    vector<Listener> listeners;
-    Connection_accepter connection_accepter = Connection_accepter();
     vector<Projectile> Ps;
     int highscore, window_width, window_height;
     float tick_rate;
-    float tick_duration;
+    int tick_duration;
     int level_start_tick;
     int tick = 0;
     vector<Event> events;
@@ -208,7 +204,7 @@ public:
     Engine()
     {
         import_settings();
-        tick_duration = 1 / tick_rate;
+        tick_duration = 1000000000 / tick_rate;
         level_start_tick = -1;
         tick = 0;
         status = "null";
@@ -226,12 +222,13 @@ public:
         };
     };
 
-    void wait_next_frame()
+    void wait_next_tick()
     {
-        float time_to_sleep = next_tick_time - time(&timer);
-        if (time_to_sleep > 0)
+        clock_gettime(clk_id, &tp);
+        int time_to_sleep = fmod(next_tick_time - tp.tv_nsec, 1000000000);
+        if (time_to_sleep < tick_duration)
         {
-            usleep(time_to_sleep * 1000);
+            usleep(time_to_sleep / 1000);
         };
         next_tick_time += tick_duration;
         tick += 1;
@@ -459,7 +456,7 @@ public:
         };
     };
 
-    void move()
+    void move_stuff()
     {
         check_for_level();
         check_for_shoots();
@@ -550,14 +547,127 @@ public:
 
         status = new_status;
     };
+
+    int make_new_id()
+    {
+        int new_id;
+        bool ok;
+        while(1)
+        {
+            new_id = rand();
+            ok = 1;
+            for (int i = 0; i < players.size(); i++)
+            {
+                if (players[i].id == new_id)
+                {
+                    ok = 0;
+                };
+            };
+            if (ok)
+            {
+                return new_id;
+            };
+        };
+    };
+
+    static void listener(int client, Engine *boss)
+    {
+        char buffer[256];
+        string temp;
+        int check, id, n;
+        vector<string> events_buffer;
+        write(client, "Thank you for connecting", 24);
+        bzero(buffer, 256);
+        read(client, buffer, 255);
+        for (int i = 0; i < 19; i++)
+        {
+            temp += buffer[i];
+        };
+        cout << temp << endl;
+        temp = "";
+        for (int i = 19; i < 256; i++)
+        {
+            if (buffer[i] == ',')
+            {
+                break;
+            };
+            temp += buffer[i];
+        };
+        id = boss->make_new_id();
+        write(client, to_string(id).data(), to_string(id).size());
+        Ship s(temp, 255, 255, 255, boss->window_width, boss->window_height);
+        boss->players.push_back(Player(id, &s));
+        while(1)
+        {
+            events_buffer.clear();
+            bzero(buffer, 256);
+            read(client, buffer, 255);
+            n = 0;
+            temp = "";
+            for (int i = 0; i < 256; i++)
+            {
+                if (buffer[i] == ',')
+                {
+                    events_buffer.push_back(temp);
+                }
+                else
+                {
+                    temp += buffer[i];
+                };
+            };
+            for (int i = 0; i < events_buffer.size() + 1; i += 2)
+            {
+                boss->events.push_back(Event(id, events_buffer[i+1]));
+            };
+            write(client, boss->status.data(), boss->status.size());
+        };
+    };
+
+    static void accept_connections(Engine *boss)
+    {
+        int sockfd, new_client;
+        vector<thread> listeners;
+        struct sockaddr_in serv_addr, cli_addr;
+        socklen_t clilen;
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        bzero((char *) &serv_addr, sizeof(serv_addr));
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_addr.s_addr = INADDR_ANY;
+        serv_addr.sin_port = htons(12346);
+        bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+        listen(sockfd,5);
+        clilen = sizeof(cli_addr);
+        while(1)
+        {
+            new_client = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+            thread t(listener, new_client, boss);
+            listeners.push_back(move(t));
+        };
+    };
+
+    void run()
+    {
+        // thread connections_accepter (accept_connections, this);
+        clock_gettime(clk_id, &tp);
+        next_tick_time = tp.tv_nsec;
+        while(1)
+        {
+            event_handle();
+            wait_next_tick();
+            move_stuff();
+            make_status();
+        };
+    };
 };
 
 
 int main()
 {
     srand(time(&timer));
-    double secs = time(&timer);
+    clk_id = CLOCK_REALTIME;
+    clock_gettime(clk_id, &tp);
     Engine e;
-    cout << secs << endl;
+    // thread c(Engine::accept_connections, &e);
+    e.run();
     return 0;
 };
